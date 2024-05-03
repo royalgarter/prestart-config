@@ -1,0 +1,30 @@
+{
+  "name": "prestart-config",
+  "version": "1.0",
+  "description": "prestart-config",
+  "main": "config.js",
+  "bin": {
+    "precfg": "./config.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/royalgarter/prestart-config.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/royalgarter/prestart-config/issues"
+  },
+  "homepage": "https://github.com/royalgarter/prestart-config#readme",
+  "dependencies": {
+    "commander": "^12.0.0",
+    "mongodb": "^6.5.0",
+    "yaml": "^2.4.2"
+  },
+  "devDependencies": {
+    "dotenv": "^9.0.2"
+  },
+  "_id": "prestart-config@1.0.0",
+  "_from": "prestart-config@*"
+}
