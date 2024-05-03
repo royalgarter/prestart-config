@@ -1,10 +1,10 @@
 {
   "name": "prestart-config",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "prestart-config",
   "main": "config.js",
-  "bin": {
-    "precfg": "config.js"
+  "scripts": {
+    "prestart-config": "node config.js"
   },
   "repository": {
     "type": "git",
@@ -25,6 +25,6 @@
   "devDependencies": {
     "dotenv": "^9.0.2"
   },
-  "_id": "prestart-config@1.0.1",
+  "_id": "prestart-config@1.0.2",
   "_from": "prestart-config@*"
 }
