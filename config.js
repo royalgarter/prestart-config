@@ -1,4 +1,4 @@
-'use strict'
+#!/usr/bin/env node
 
 const fs = require('fs');
 const path = require('path');
@@ -17,7 +17,7 @@ program
 	.option('-i, --init', 'init')
 
 program.parse(process.argv);
-const PARAMS = program.opts(); console.dir(PARAMS);
+const PARAMS = program.opts();// console.dir(PARAMS);
 
 const CONFIG_DIR = path.join(PARAMS.dir);
 
@@ -32,13 +32,14 @@ const exit = (c=0, ...m) => (m?.[0] && console.log(...m)) & process.exit(c);
 		if (from.includes('mongo')) await configMongo();
 
 	} catch (ex) {
-		console.log(ex)
+		console.error(ex)
 	} finally {
+		console.success('CONFIG LOADED: ' + from)
 		exit(0);
 	}
 })();
 
-async function configMongo () {
+async function configMongo() {
 	const { MongoClient } = require('mongodb');
 	const client = new MongoClient(ENV.MONGO_URL || PARAMS.from);
 	await client.connect();
