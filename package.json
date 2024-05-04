@@ -1,7 +1,7 @@
 {
   "name": "prestart-config",
-  "version": "1.0.9",
-  "description": "prestart-config",
+  "version": "1.0.10",
+  "description": "[npx] Preload (.js/.json/.yaml) files from [Mongo/Redis/Spreadsheet/S3/Git/URL] at npm script `prestart`",
   "main": "config.js",
   "bin": {
     "prestart-config": "config.js"
@@ -19,13 +19,13 @@
   "homepage": "https://github.com/royalgarter/prestart-config#readme",
   "dependencies": {
     "commander": "^12.0.0",
-    "google-spreadsheet": "^4.1.1",
+    "google-spreadsheet": "^3.3.0",
     "mongodb": "^6.5.0",
     "yaml": "^2.4.2"
   },
   "devDependencies": {
     "dotenv": "^9.0.2"
   },
-  "_id": "prestart-config@1.0.9",
+  "_id": "prestart-config@1.0.10",
   "_from": "prestart-config@*"
 }
