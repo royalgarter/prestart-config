@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
+try { fs.existsSync(__dirname + '/.env') && require('dotenv').config() && console.log('Success: env loaded ' + __dirname + '/.env'); } catch {}
+
 const fs = require('fs');
 const path = require('path');
 
 const YAML = require('yaml');
 const { program } = require('commander');
 
-fs.existsSync(__dirname + '/.env') && require('dotenv').config();
 const ENV = process.env, ARGS = process.argv.slice(2);
 
 program
@@ -18,7 +19,6 @@ program
 
 program.parse(process.argv);
 const PARAMS = program.opts();// console.dir(PARAMS);
-
 const CONFIG_DIR = path.join(PARAMS.dir);
 
 !fs.existsSync(CONFIG_DIR) && fs.mkdirSync(CONFIG_DIR, { recursive: true });
@@ -26,15 +26,14 @@ const CONFIG_DIR = path.join(PARAMS.dir);
 const exit = (c=0, ...m) => (m?.[0] && console.log(...m)) & process.exit(c);
 
 ;(async function main() {
+	let {from} = PARAMS;
+
 	try {
-		let {from} = PARAMS;
-
 		if (from.includes('mongo')) await configMongo();
-
 	} catch (ex) {
 		console.error(ex)
 	} finally {
-		console.success('CONFIG LOADED: ' + from)
+		console.log('Success: config loaded ' + from)
 		exit(0);
 	}
 })();
