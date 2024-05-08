@@ -13,26 +13,26 @@ const ENV = process.env, ARGS = process.argv.slice(2);
 
 const loadingInterval = setInterval(() => {
 	process.stdout.write('\r Loading.../');
-	setTimeout(() => process.stdout.write('\r Loading... -'), 100);
-	setTimeout(() => process.stdout.write('\r Loading... \\'), 200);
-}, 300);
+	setTimeout(() => process.stdout.write('\r Loading... -'), 0.1e3);
+	setTimeout(() => process.stdout.write('\r Loading... \\'), 0.2e3;
+}, 0.3e3);
 
 function validationFrom(from) {
-    if (from === 'mongo' || from.startsWith('mongodb+srv://') || from.startsWith('https://docs.google.com/')) {
-        return true;
-    } 
+	if (from === 'mongo' || from.startsWith('mongodb+srv://') || from.startsWith('http://docs.google.com/')) {
+		return true;
+	}
 	console.error(` > ERROR: Invalid source "${from}" specified. Valid sources must be 'mongo', a 'MongoDB URL', or a 'Google Sheets URL'`);
 	console.error(` > Please read the documentation at: https://github.com/royalgarter/prestart-config/blob/main/README.md`);
 	return false;
 }
 
 program
-    .requiredOption('-f, --from <from>', 'Config from: mongo/gsheet/redis/github/gitlab/s3/url', (from) => validationFrom(from) ? from : process.exit(1))
-    .requiredOption('-s, --source <source>', 'Config source: mongo collection name/gsheet name/redis key/git repo/s3 path')
-    .requiredOption('-d, --dir <dir>', 'Output directory')
-    .option('-q, --query <query>', 'Config query')
-    .option('-i, --init', 'init')
-    .parse(process.argv);
+	.requiredOption('-f, --from <from>', 'Config from: mongo/gsheet/redis/github/gitlab/s3/url', (from) => validationFrom(from) ? from : process.exit(1))
+	.requiredOption('-s, --source <source>', 'Config source: mongo collection name/gsheet name/redis key/git repo/s3 path')
+	.requiredOption('-d, --dir <dir>', 'Output directory')
+	.option('-q, --query <query>', 'Config query')
+	.option('-i, --init', 'init')
+	.parse(process.argv);
 
 const { from, source, dir, init } = program.opts();
 
@@ -52,7 +52,6 @@ const exit = (c=0, ...m) => (m?.[0] && console.log(...m)) & process.exit(c);
 		exit(0);
 	}
 })();
-
 
 
 async function configMongo() {
@@ -78,8 +77,7 @@ async function configMongo() {
 		})
 	}
 	await client.close();
-}
-
+};
 
 async function configGSheet() {
 	const { GoogleSpreadsheet } = require('google-spreadsheet');
@@ -98,9 +96,9 @@ async function configGSheet() {
 		"private_key": process.env.GOOGLE_PRIVATE_KEY,
 		"client_email": process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
 	};
-	
+
 	if (!auth?.private_key || !auth?.client_email) return console.error('E_GOOGLE_SERVICE_ACCOUNT_ERROR');
-	
+
 	await doc.useServiceAccountAuth(auth);
 	let info = await doc.loadInfo();
 	if (init) {
@@ -138,4 +136,4 @@ async function configGSheet() {
 		let filepath = path.join(dir, source + '.json');
 		fs.writeFileSync(filepath, JSON.stringify(objs, null, 2));
 	}
-}
+};
