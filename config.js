@@ -3,9 +3,6 @@
 const fs = require('fs');
 const path = require('path');
 
-const dotenv =__dirname + '/.env';// console.log(dotenv)
-try { fs.existsSync(dotenv) && require('dotenv').config() && console.log(' > SUCCESS: Dotenv is loaded ' + dotenv); } catch {}
-
 const YAML = require('yaml');
 const { program } = require('commander');
 
@@ -30,11 +27,14 @@ program
 	.requiredOption('-f, --from <from>', 'Config from: mongo/gsheet/redis/github/gitlab/s3/url', (from) => validationFrom(from) ? from : process.exit(1))
 	.requiredOption('-s, --source <source>', 'Config source: mongo collection name/gsheet name/redis key/git repo/s3 path')
 	.requiredOption('-d, --dir <dir>', 'Output directory')
-	.option('-q, --query <query>', 'Config query')
-	.option('-i, --init', 'init')
+	.option('-e, --env <dotenv>', 'Optional: Environment filepath', __dirname + '/.env')
+	.option('-q, --query <query>', 'Optional: Config query')
+	.option('-i, --init', 'Optional Mode: Initialize from file')
 	.parse(process.argv);
 
-const { from, source, dir, init } = program.opts();
+const { from, source, dir, init, dotenv } = program.opts();
+
+try { fs.existsSync(dotenv) && require('dotenv').config({path: dotenv}) && console.log(' > SUCCESS: Dotenv is loaded ' + dotenv); } catch {}
 
 !fs.existsSync(dir) && fs.mkdirSync(dir, { recursive: true });
 
