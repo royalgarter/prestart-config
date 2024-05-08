@@ -11,13 +11,28 @@ const { program } = require('commander');
 
 const ENV = process.env, ARGS = process.argv.slice(2);
 
+const loadingInterval = setInterval(() => {
+	process.stdout.write('\r Loading.../');
+	setTimeout(() => process.stdout.write('\r Loading... -'), 100);
+	setTimeout(() => process.stdout.write('\r Loading... \\'), 200);
+}, 300);
+
+function validationFrom(from) {
+    if (from === 'mongo' || from.startsWith('mongodb+srv://') || from.startsWith('https://docs.google.com/')) {
+        return true;
+    } 
+	console.error(` > ERROR: Invalid source "${from}" specified. Valid sources must be 'mongo', a 'MongoDB URL', or a 'Google Sheets URL'`);
+	console.error(` > Please read the documentation at: https://github.com/royalgarter/prestart-config/blob/main/README.md`);
+	return false;
+}
+
 program
-	.option('-f, --from <from>', 'Config from: mongo/gsheet/redis/github/gitlab/s3/url')
-	.option('-d, --dir <dir>', 'Output directory')
-	.option('-s, --source <source>', 'Config source: mongo collection name/gsheet name/redis key/git repo/s3 path')
-	.option('-q, --query <query>', 'Config query')
-	.option('-i, --init', 'init')
-	.parse(process.argv);
+    .requiredOption('-f, --from <from>', 'Config from: mongo/gsheet/redis/github/gitlab/s3/url', (from) => validationFrom(from) ? from : process.exit(1))
+    .requiredOption('-s, --source <source>', 'Config source: mongo collection name/gsheet name/redis key/git repo/s3 path')
+    .requiredOption('-d, --dir <dir>', 'Output directory')
+    .option('-q, --query <query>', 'Config query')
+    .option('-i, --init', 'init')
+    .parse(process.argv);
 
 const { from, source, dir, init } = program.opts();
 
@@ -32,17 +47,19 @@ const exit = (c=0, ...m) => (m?.[0] && console.log(...m)) & process.exit(c);
 	} catch (ex) {
 		console.error(ex)
 	} finally {
-		console.log(` > SUCCESS: Configs are ${init ? 'initialzed' : 'loaded'} from: ` + from)
+		console.log(`\n> SUCCESS: Configs are ${init ? 'initialzed' : 'loaded'} from: ` + from)
+		clearInterval(loadingInterval);
 		exit(0);
 	}
 })();
+
+
 
 async function configMongo() {
 	const { MongoClient } = require('mongodb');
 	const client = new MongoClient(ENV.MONGO_URL || from);
 	await client.connect();
 	const collection = client.db().collection(source);
-
 	if (init) {
 		for (let file of fs.readdirSync(dir)) {
 			let filepath = path.join(dir, file);
@@ -51,25 +68,21 @@ async function configMongo() {
 			let js = (ext == '.js');
 			let yaml = (ext == '.yaml' || ext == '.yml');
 			let value = (js || yaml) ? fs.readFileSync(filepath, 'utf8') : require(filepath);
-
 			await collection.updateOne({ key }, { date: new Date(), key, value, js, yaml}, {upsert: true});
 		}
 	} else {
 		const configs = await collection.find({}).toArray();
-
 		configs.map(({key, value, js, yaml}) => {
 			let filepath = path.join(dir, key + (yaml ? '.yaml' : (js ? '.js' : '.json')));
 			fs.writeFileSync(filepath, yaml ? YAML.stringify(value) : (js ? value : JSON.stringify(value, null, 2)));
 		})
 	}
-
 	await client.close();
 }
 
 
 async function configGSheet() {
 	const { GoogleSpreadsheet } = require('google-spreadsheet');
-
 	let id = from;
 	if (from.includes('http') || from.includes('/d/')) {
 		try {
@@ -79,19 +92,17 @@ async function configGSheet() {
 	}
 
 	let doc = new GoogleSpreadsheet(id);
-
 	let auth = (process.env.GOOGLE_SERVICE_ACCOUNT_FILE && fs.existsSync(process.env.GOOGLE_SERVICE_ACCOUNT_FILE))
-		? require(process.env.GOOGLE_SERVICE_ACCOUNT_FILE)
-		: {
-			"private_key": process.env.GOOGLE_PRIVATE_KEY,
-			"client_email": process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-		};
-
+	? require(process.env.GOOGLE_SERVICE_ACCOUNT_FILE)
+	: {
+		"private_key": process.env.GOOGLE_PRIVATE_KEY,
+		"client_email": process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+	};
+	
 	if (!auth?.private_key || !auth?.client_email) return console.error('E_GOOGLE_SERVICE_ACCOUNT_ERROR');
-
+	
 	await doc.useServiceAccountAuth(auth);
 	let info = await doc.loadInfo();
-
 	if (init) {
 		for (let file of fs.readdirSync(dir)) {
 			let filepath = path.join(dir, file);
@@ -100,7 +111,7 @@ async function configGSheet() {
 			let js = (ext == '.js');
 			let items = require(filepath);
 
-			if (!Array.isArray(items)) return console.error('E_JSON_FILE_IS_NOT_ARRAY');
+			if (!Array.isArray(items)) return console.error('\nE_JSON_FILE_IS_NOT_ARRAY');
 
 			let sheet = doc.sheetsByIndex.find(x => x.title == key);
 			if (!sheet) sheet = await doc.addSheet({title: key});
@@ -115,7 +126,7 @@ async function configGSheet() {
 		}
 	} else {
 		let sheet = doc.sheetsByIndex.find(x => x.title == source);
-		if (!sheet) return console.error('E_SHEETNAME_NOT_FOUND');
+		if (!sheet) return console.error('\nE_SHEETNAME_NOT_FOUND');
 
 		await sheet.loadCells();
 
