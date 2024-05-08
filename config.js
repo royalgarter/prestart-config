@@ -22,7 +22,7 @@ function validationFrom(from) {
         return true;
     } 
 	console.error(` > ERROR: Invalid source "${from}" specified. Valid sources must be 'mongo', a 'MongoDB URL', or a 'Google Sheets URL'`);
-	console.error(` > Please read the documentation at: https://github.com/TanDuc2003/maika/edit/main/README.md`);
+	console.error(` > Please read the documentation at: https://github.com/royalgarter/prestart-config/blob/main/README.md`);
 	return false;
 }
 
@@ -47,6 +47,8 @@ const exit = (c=0, ...m) => (m?.[0] && console.log(...m)) & process.exit(c);
 	} catch (ex) {
 		console.error(ex)
 	} finally {
+		console.log(`\n> SUCCESS: Configs are ${init ? 'initialzed' : 'loaded'} from: ` + from)
+		clearInterval(loadingInterval);
 		exit(0);
 	}
 })();
@@ -58,96 +60,82 @@ async function configMongo() {
 	const client = new MongoClient(ENV.MONGO_URL || from);
 	await client.connect();
 	const collection = client.db().collection(source);
-	try {
-		if (init) {
-			for (let file of fs.readdirSync(dir)) {
-				let filepath = path.join(dir, file);
-				let ext = path.extname(file);
-				let key = path.basename(file, ext);
-				let js = (ext == '.js');
-				let yaml = (ext == '.yaml' || ext == '.yml');
-				let value = (js || yaml) ? fs.readFileSync(filepath, 'utf8') : require(filepath);
-				await collection.updateOne({ key }, { date: new Date(), key, value, js, yaml}, {upsert: true});
-			}
-		} else {
-			const configs = await collection.find({}).toArray();
-			configs.map(({key, value, js, yaml}) => {
-				let filepath = path.join(dir, key + (yaml ? '.yaml' : (js ? '.js' : '.json')));
-				fs.writeFileSync(filepath, yaml ? YAML.stringify(value) : (js ? value : JSON.stringify(value, null, 2)));
-			})
+	if (init) {
+		for (let file of fs.readdirSync(dir)) {
+			let filepath = path.join(dir, file);
+			let ext = path.extname(file);
+			let key = path.basename(file, ext);
+			let js = (ext == '.js');
+			let yaml = (ext == '.yaml' || ext == '.yml');
+			let value = (js || yaml) ? fs.readFileSync(filepath, 'utf8') : require(filepath);
+			await collection.updateOne({ key }, { date: new Date(), key, value, js, yaml}, {upsert: true});
 		}
-		console.log(` \n> SUCCESS: Configs are ${init ? 'initialzed' : 'loaded'} from: ` + from)
-	} catch (error) {
-		console.log(`\n ${error}`);
-	} finally {
-		clearInterval(loadingInterval);
-		await client.close();
+	} else {
+		const configs = await collection.find({}).toArray();
+		configs.map(({key, value, js, yaml}) => {
+			let filepath = path.join(dir, key + (yaml ? '.yaml' : (js ? '.js' : '.json')));
+			fs.writeFileSync(filepath, yaml ? YAML.stringify(value) : (js ? value : JSON.stringify(value, null, 2)));
+		})
 	}
+	await client.close();
 }
 
 
 async function configGSheet() {
 	const { GoogleSpreadsheet } = require('google-spreadsheet');
-	try {
-		let id = from;
-		if (from.includes('http') || from.includes('/d/')) {
-			try {
-				let url = new URL(from);
-				id = url.pathname.match(/\/d\/([\w\d-]*)/)?.[1] || from;
-			} catch {}
-		}
+	let id = from;
+	if (from.includes('http') || from.includes('/d/')) {
+		try {
+			let url = new URL(from);
+			id = url.pathname.match(/\/d\/([\w\d-]*)/)?.[1] || from;
+		} catch {}
+	}
 
-		let doc = new GoogleSpreadsheet(id);
-		let auth = (process.env.GOOGLE_SERVICE_ACCOUNT_FILE && fs.existsSync(process.env.GOOGLE_SERVICE_ACCOUNT_FILE))
-		? require(process.env.GOOGLE_SERVICE_ACCOUNT_FILE)
-		: {
-			"private_key": process.env.GOOGLE_PRIVATE_KEY,
-			"client_email": process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-		};
-		
-		if (!auth?.private_key || !auth?.client_email) return console.error('E_GOOGLE_SERVICE_ACCOUNT_ERROR');
-		
-		await doc.useServiceAccountAuth(auth);
-		let info = await doc.loadInfo();
-		if (init) {
-			for (let file of fs.readdirSync(dir)) {
-				let filepath = path.join(dir, file);
-				let ext = path.extname(file);
-				let key = path.basename(file, ext);
-				let js = (ext == '.js');
-				let items = require(filepath);
+	let doc = new GoogleSpreadsheet(id);
+	let auth = (process.env.GOOGLE_SERVICE_ACCOUNT_FILE && fs.existsSync(process.env.GOOGLE_SERVICE_ACCOUNT_FILE))
+	? require(process.env.GOOGLE_SERVICE_ACCOUNT_FILE)
+	: {
+		"private_key": process.env.GOOGLE_PRIVATE_KEY,
+		"client_email": process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+	};
+	
+	if (!auth?.private_key || !auth?.client_email) return console.error('E_GOOGLE_SERVICE_ACCOUNT_ERROR');
+	
+	await doc.useServiceAccountAuth(auth);
+	let info = await doc.loadInfo();
+	if (init) {
+		for (let file of fs.readdirSync(dir)) {
+			let filepath = path.join(dir, file);
+			let ext = path.extname(file);
+			let key = path.basename(file, ext);
+			let js = (ext == '.js');
+			let items = require(filepath);
 
-				if (!Array.isArray(items)) return console.error('\nE_JSON_FILE_IS_NOT_ARRAY');
+			if (!Array.isArray(items)) return console.error('\nE_JSON_FILE_IS_NOT_ARRAY');
 
-				let sheet = doc.sheetsByIndex.find(x => x.title == key);
-				if (!sheet) sheet = await doc.addSheet({title: key});
-				await sheet.loadCells();
-
-				await sheet.loadHeaderRow();
-				let headers = sheet.headerValues;
-
-				if (!headers?.length) sheet.addRow(Object.keys(items[0]));
-
-				await sheet.addRows(items.map(item => Object.values(items)));
-			}
-		} else {
-			let sheet = doc.sheetsByIndex.find(x => x.title == source);
-			if (!sheet) return console.error('\nE_SHEETNAME_NOT_FOUND');
-
+			let sheet = doc.sheetsByIndex.find(x => x.title == key);
+			if (!sheet) sheet = await doc.addSheet({title: key});
 			await sheet.loadCells();
 
-			let rows = await sheet.getRows();
+			await sheet.loadHeaderRow();
 			let headers = sheet.headerValues;
 
-			let objs = rows.map( row => Object.fromEntries(headers.map(h => [h, row[h]])) )
+			if (!headers?.length) sheet.addRow(Object.keys(items[0]));
 
-			let filepath = path.join(dir, source + '.json');
-			fs.writeFileSync(filepath, JSON.stringify(objs, null, 2));
+			await sheet.addRows(items.map(item => Object.values(items)));
 		}
-		console.log(`\n> SUCCESS: Configs are ${init ? 'initialzed' : 'loaded'} from: ` + from)
-	} catch (error) {
-		console.error(`\n > ${error}`);
-	} finally {
-		clearInterval(loadingInterval);
+	} else {
+		let sheet = doc.sheetsByIndex.find(x => x.title == source);
+		if (!sheet) return console.error('\nE_SHEETNAME_NOT_FOUND');
+
+		await sheet.loadCells();
+
+		let rows = await sheet.getRows();
+		let headers = sheet.headerValues;
+
+		let objs = rows.map( row => Object.fromEntries(headers.map(h => [h, row[h]])) )
+
+		let filepath = path.join(dir, source + '.json');
+		fs.writeFileSync(filepath, JSON.stringify(objs, null, 2));
 	}
 }
