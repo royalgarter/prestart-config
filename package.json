@@ -1,6 +1,6 @@
 {
   "name": "prestart-config",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "[npx] Preload (.js/.json/.yaml) files from [Mongo/Redis/Arango/Spreadsheet/S3/Git/URL] at npm script `prestart`",
   "main": "config.js",
   "bin": {
@@ -26,6 +26,6 @@
   "devDependencies": {
     "dotenv": "^9.0.2"
   },
-  "_id": "prestart-config@1.0.11",
+  "_id": "prestart-config@1.0.12",
   "_from": "prestart-config@*"
 }

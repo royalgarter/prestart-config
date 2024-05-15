@@ -11,7 +11,7 @@ const ENV = process.env, ARGS = process.argv.slice(2);
 const loadingInterval = setInterval(() => {
 	process.stdout.write('\r Loading.../');
 	setTimeout(() => process.stdout.write('\r Loading... -'), 0.1e3);
-	setTimeout(() => process.stdout.write('\r Loading... \\'), 0.2e3;
+	setTimeout(() => process.stdout.write('\r Loading... \\'), 0.2e3);
 }, 0.3e3);
 
 function validationFrom(from) {
