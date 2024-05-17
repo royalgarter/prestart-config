@@ -47,7 +47,7 @@ const exit = (c=0, ...m) => (m?.[0] && console.log(...m)) & process.exit(c);
 	} catch (ex) {
 		console.error(ex)
 	} finally {
-		console.log(`\n> SUCCESS: Configs are ${init ? 'initialzed' : 'loaded'} from: ` + from)
+		console.log(`\n> SUCCESS: Configs are ${init ? 'initialzed' : 'loaded'} ${init ? 'to' : 'from'}: ` + from);
 		clearInterval(loadingInterval);
 		exit(0);
 	}
@@ -66,8 +66,9 @@ async function configMongo() {
 			let key = path.basename(file, ext);
 			let js = (ext == '.js');
 			let yaml = (ext == '.yaml' || ext == '.yml');
-			let value = (js || yaml) ? fs.readFileSync(filepath, 'utf8') : require(filepath);
-			await collection.updateOne({ key }, { date: new Date(), key, value, js, yaml}, {upsert: true});
+			let str = fs.readFileSync(filepath, 'utf8');
+			let value = (js || yaml) ? str : JSON.parse(str);
+			await collection.updateOne({ key }, { $set: { date: new Date(), key, value, js, yaml }}, {upsert: true});
 		}
 	} else {
 		const configs = await collection.find({}).toArray();
