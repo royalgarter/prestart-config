@@ -14,27 +14,37 @@ const loadingInterval = setInterval(() => {
 	setTimeout(() => process.stdout.write('\r Loading... \\'), 0.2e3);
 }, 0.3e3);
 
-function validationFrom(from) {
-	if (from === 'mongo' || from.startsWith('mongodb+srv://') || from.startsWith('http://docs.google.com/')) {
-		return true;
-	}
-	console.error(` > ERROR: Invalid source "${from}" specified. Valid sources must be 'mongo', a 'MongoDB URL', or a 'Google Sheets URL'`);
-	console.error(` > Please read the documentation at: https://github.com/royalgarter/prestart-config/blob/main/README.md`);
-	return false;
+function validateFrom(from) {
+	let flag = (
+		from == 'mongo'
+		|| ~from.search(/mongo(db)?(\+srv)?:\/\//)
+		|| ~from.search(/http(s)?:\/\/.*\.google\.com/)
+	) || false;
+
+	if (flag) return from;
+
+	console.error([
+		` > ERROR:`,
+		`Invalid source "${from}" specified.`,
+		`Valid sources must be 'mongo', 'MongoDB URL' or 'Google Sheets URL'.`,
+		`Read more: https://github.com/royalgarter/prestart-config/blob/main/README.md`,
+	].join(' '));
+
+	return null;
 }
 
 program
-	.requiredOption('-f, --from <from>', 'Config from: mongo/gsheet/redis/github/gitlab/s3/url', (from) => validationFrom(from) ? from : process.exit(1))
+	.requiredOption('-f, --from <from>', 'Config from: mongo/gsheet/redis/github/gitlab/s3/url', from => validateFrom(from) ||process.exit(1))
 	.requiredOption('-s, --source <source>', 'Config source: mongo collection name/gsheet name/redis key/git repo/s3 path')
 	.requiredOption('-d, --dir <dir>', 'Output directory')
-	.option('-e, --env <dotenv>', 'Optional: Environment filepath', __dirname + '/.env')
+	.option('-e, --dotenv <dotenv>', 'Optional: Dotenv absolute filepath', __dirname + '/.env')
 	.option('-q, --query <query>', 'Optional: Config query')
 	.option('-i, --init', 'Optional Mode: Initialize from file')
 	.parse(process.argv);
 
 const { from, source, dir, init, dotenv } = program.opts();
 
-try { fs.existsSync(dotenv) && require('dotenv').config({path: dotenv}) && console.log(' > SUCCESS: Dotenv is loaded ' + dotenv); } catch {}
+try { fs.existsSync(dotenv) && require('dotenv').config({path: dotenv}) && console.log(' > SUCCESS: Dotenv is loaded ' + dotenv); } catch (ex) {console.dir(ex.message || ex)}
 
 !fs.existsSync(dir) && fs.mkdirSync(dir, { recursive: true });
 
@@ -98,7 +108,7 @@ async function configGSheet() {
 		"client_email": process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
 	};
 
-	if (!auth?.private_key || !auth?.client_email) return console.error('E_GOOGLE_SERVICE_ACCOUNT_ERROR');
+	if (!auth?.private_key || !auth?.client_email) throw new Error('E_GOOGLE_SERVICE_ACCOUNT_ERROR');
 
 	await doc.useServiceAccountAuth(auth);
 	let info = await doc.loadInfo();
@@ -110,7 +120,7 @@ async function configGSheet() {
 			let js = (ext == '.js');
 			let items = require(filepath);
 
-			if (!Array.isArray(items)) return console.error('\nE_JSON_FILE_IS_NOT_ARRAY');
+			if (!Array.isArray(items)) throw new Error('E_JSON_FILE_IS_NOT_ARRAY');
 
 			let sheet = doc.sheetsByIndex.find(x => x.title == key);
 			if (!sheet) sheet = await doc.addSheet({title: key});
@@ -125,7 +135,7 @@ async function configGSheet() {
 		}
 	} else {
 		let sheet = doc.sheetsByIndex.find(x => x.title == source);
-		if (!sheet) return console.error('\nE_SHEETNAME_NOT_FOUND');
+		if (!sheet) throw new Error('E_SHEETNAME_NOT_FOUND');
 
 		await sheet.loadCells();
 
