@@ -9,10 +9,10 @@ const { program } = require('commander');
 const ENV = process.env, ARGS = process.argv.slice(2);
 
 let loading = setInterval(() => {
-					process.stdout.write('\r> Loading...|');
-	setTimeout(_ => process.stdout.write('\r> Loading...\/'), 0.1e3);
-	setTimeout(_ => process.stdout.write('\r> Loading...\-'), 0.2e3);
-	setTimeout(_ => process.stdout.write('\r> Loading...\\'), 0.3e3);
+					process.stdout.write('\r> loading...|');
+	setTimeout(_ => process.stdout.write('\r> loading...\/'), 0.1e3);
+	setTimeout(_ => process.stdout.write('\r> loading...\-'), 0.2e3);
+	setTimeout(_ => process.stdout.write('\r> loading...\\'), 0.3e3);
 }, 0.4e3);
 
 function validateFrom(from) {
@@ -35,7 +35,7 @@ function validateFrom(from) {
 }
 
 program
-	.requiredOption('-f, --from <from>', 'Config from: mongo/gsheet/redis/github/gitlab/s3/url', from => validateFrom(from) ||process.exit(1))
+	.requiredOption('-f, --from <from>', 'Config from: mongo/gsheet/redis/github/gitlab/s3/url', from => validateFrom(from) || process.exit(1))
 	.requiredOption('-s, --source <source>', 'Config source: mongo collection name/gsheet name/redis key/git repo/s3 path')
 	.requiredOption('-d, --dir <dir>', 'Output directory')
 	.option('-e, --dotenv <dotenv>', 'Optional: Dotenv absolute filepath', __dirname + '/.env')
@@ -45,7 +45,7 @@ program
 
 const { from, source, dir, init, dotenv } = program.opts();
 
-try { fs.existsSync(dotenv) && require('dotenv').config({path: dotenv}) && console.log(' > SUCCESS: Dotenv is loaded ' + dotenv); } catch (ex) {console.dir(ex.message || ex)}
+try { fs.existsSync(dotenv) && require('dotenv').config({path: dotenv}) && console.log(`> SUCCESS: Dotenv is loaded '${dotenv}'`) } catch (ex) {console.dir(ex.message || ex)}
 
 !fs.existsSync(dir) && fs.mkdirSync(dir, { recursive: true });
 
