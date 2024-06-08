@@ -9,10 +9,10 @@ const { program } = require('commander');
 const ENV = process.env, ARGS = process.argv.slice(2);
 
 let loading = setInterval(() => {
-					process.stdout.write('\r Loading...|');
-	setTimeout(_ => process.stdout.write('\r Loading...\/'), 0.1e3);
-	setTimeout(_ => process.stdout.write('\r Loading...\-'), 0.2e3);
-	setTimeout(_ => process.stdout.write('\r Loading...\\'), 0.3e3);
+					process.stdout.write('\r  > Loading...|');
+	setTimeout(_ => process.stdout.write('\r  > Loading...\/'), 0.1e3);
+	setTimeout(_ => process.stdout.write('\r  > Loading...\-'), 0.2e3);
+	setTimeout(_ => process.stdout.write('\r  > Loading...\\'), 0.3e3);
 }, 0.4e3);
 
 function validateFrom(from) {
