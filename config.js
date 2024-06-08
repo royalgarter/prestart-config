@@ -8,11 +8,12 @@ const { program } = require('commander');
 
 const ENV = process.env, ARGS = process.argv.slice(2);
 
-const loadingInterval = setInterval(() => {
-	process.stdout.write('\r Loading.../');
-	setTimeout(() => process.stdout.write('\r Loading... -'), 0.1e3);
-	setTimeout(() => process.stdout.write('\r Loading... \\'), 0.2e3);
-}, 0.3e3);
+let loading = setInterval(() => {
+					process.stdout.write('\r Loading...|');
+	setTimeout(_ => process.stdout.write('\r Loading...\/'), 0.1e3);
+	setTimeout(_ => process.stdout.write('\r Loading...\-'), 0.2e3);
+	setTimeout(_ => process.stdout.write('\r Loading...\\'), 0.3e3);
+}, 0.4e3);
 
 function validateFrom(from) {
 	let flag = (
@@ -58,7 +59,7 @@ const exit = (c=0, ...m) => (m?.[0] && console.log(...m)) & process.exit(c);
 		console.error(ex)
 	} finally {
 		console.log(`\n> SUCCESS: Configs are ${init ? 'initialzed' : 'loaded'} ${init ? 'to' : 'from'}: ` + from);
-		clearInterval(loadingInterval);
+		clearInterval(loading);
 		exit(0);
 	}
 })();
