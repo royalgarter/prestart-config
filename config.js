@@ -17,9 +17,10 @@ let loading = setInterval(() => {
 
 function validateFrom(from) {
 	let flag = (
-		from == 'mongo'
+		from == 'mongo' || from == 'arango'
 		|| ~from.search(/mongo(db)?(\+srv)?:\/\//)
 		|| ~from.search(/http(s)?:\/\/.*\.google\.com/)
+		|| ~from.search(/http(s)?:\/\/arango(db)?/)
 	) || false;
 
 	if (flag) return from;
@@ -27,7 +28,7 @@ function validateFrom(from) {
 	console.error([
 		` > ERROR:`,
 		`Invalid source "${from}" specified.`,
-		`Valid sources must be 'mongo', 'MongoDB URL' or 'Google Sheets URL'.`,
+		`Valid sources must be 'arango', 'mongo', 'MongoDB URL' or 'Google Sheets URL'.`,
 		`Read more: https://github.com/royalgarter/prestart-config/blob/main/README.md`,
 	].join(' '));
 
@@ -35,7 +36,7 @@ function validateFrom(from) {
 }
 
 program
-	.requiredOption('-f, --from <from>', 'Config from: mongo/gsheet/redis/github/gitlab/s3/url', from => validateFrom(from) || process.exit(1))
+	.requiredOption('-f, --from <from>', 'Config from: mongo/gsheet/arangodb/redis/github/gitlab/s3/url', from => validateFrom(from) || process.exit(1))
 	.requiredOption('-s, --source <source>', 'Config source: mongo collection name/gsheet name/redis key/git repo/s3 path')
 	.requiredOption('-d, --dir <dir>', 'Output directory')
 	.option('-e, --dotenv <dotenv>', 'Optional: Dotenv absolute filepath', __dirname + '/.env')
@@ -55,6 +56,7 @@ const exit = (c=0, ...m) => (m?.[0] && console.log(...m)) & process.exit(c);
 	try {
 		if (from.includes('mongo')) await configMongo();
 		if (from.match(/sheets?\//i)) await configGSheet();
+		if (from.includes('arango')) await configArango();
 	} catch (ex) {
 		console.error(ex)
 	} finally {
@@ -148,4 +150,43 @@ async function configGSheet() {
 		let filepath = path.join(dir, source + '.json');
 		fs.writeFileSync(filepath, JSON.stringify(objs, null, 2));
 	}
+};
+
+async function configArango() {
+	const { Database , aql} = require('arangojs');
+	const url = new URL(ENV.ARANGO_URL);
+	const regex = '([^\/]+)\/([^\/]+)';
+	const match = source.match(regex);
+	if (!match) return console.log("Error: Invalid source format. Please provide the format 'db_name/collection'");
+
+	let collectionName = match[2];
+	let arango = new Database({
+		url: url.protocol + "//" + url.host,
+		databaseName: url.pathname.replaceAll('/', ''),
+		auth: { username: url.username, password: url.password},
+	});
+
+	const arangoCollection = arango.collection(collectionName);
+	if (init) {
+		await arangoCollection.truncate();
+		for (let file of fs.readdirSync(dir)) {
+			let filepath = path.join(dir, file);
+			let ext = path.extname(file);
+			let key = path.basename(file, ext);
+			let js = (ext == '.js');
+			let yaml = (ext == '.yaml' || ext == '.yml');
+			let str = fs.readFileSync(filepath, 'utf8');
+			let value = (js || yaml) ? str : JSON.parse(str);
+
+			await arangoCollection.save({ key, date: new Date(), value, js, yaml }, {overwriteMode: 'update'});
+		}
+	} else {
+		const cursor = await arangoCollection.all();
+		const configs = await cursor.all();
+		configs.map(({ key, value, js, yaml }) => {
+			let filepath = path.join(dir, key + (yaml ? '.yaml' : (js ? '.js' : '.json')));
+			fs.writeFileSync(filepath, yaml ? YAML.stringify(value) : (js ? value : JSON.stringify(value, null, 2)));
+		});
+	}
+	await arango.close();
 };
