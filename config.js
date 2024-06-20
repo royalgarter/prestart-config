@@ -155,18 +155,14 @@ async function configGSheet() {
 async function configArango() {
 	const { Database , aql} = require('arangojs');
 	const url = new URL(ENV.ARANGO_URL);
-	const regex = '([^\/]+)\/([^\/]+)';
-	const match = source.match(regex);
-	if (!match) return console.log("Error: Invalid source format. Please provide the format 'db_name/collection'");
 
-	let collectionName = match[2];
 	let arango = new Database({
 		url: url.protocol + "//" + url.host,
 		databaseName: url.pathname.replaceAll('/', ''),
 		auth: { username: url.username, password: url.password},
 	});
 
-	const arangoCollection = arango.collection(collectionName);
+	const arangoCollection = arango.collection(source);
 	if (init) {
 		await arangoCollection.truncate();
 		for (let file of fs.readdirSync(dir)) {
