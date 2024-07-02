@@ -85,9 +85,10 @@ async function configMongo() {
 		}
 	} else {
 		const configs = await collection.find({}).toArray();
+		debugger;
 		configs.map(({key, value, js, yaml}) => {
 			let filepath = path.join(dir, key + (yaml ? '.yaml' : (js ? '.js' : '.json')));
-			fs.writeFileSync(filepath, yaml ? YAML.stringify(value) : (js ? value : JSON.stringify(value, null, 2)));
+			fs.writeFileSync(filepath, yaml ? YAML.stringify(YAML.parse(value)) : (js ? value : JSON.stringify(value, null, 2)));
 		})
 	}
 	await client.close();
