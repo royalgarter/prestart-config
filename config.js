@@ -86,10 +86,10 @@ async function configMongo() {
 	} else {
 		const configs = await collection.find({}).toArray();
 		debugger;
-		configs.map(({key, value, js, yaml}) => {
+		configs.map(({key, value, js, yaml}) => { try {
 			let filepath = path.join(dir, key + (yaml ? '.yaml' : (js ? '.js' : '.json')));
 			fs.writeFileSync(filepath, yaml ? YAML.stringify(YAML.parse(value)) : (js ? value : JSON.stringify(value, null, 2)));
-		})
+		} catch {} })
 	}
 	await client.close();
 };
@@ -117,7 +117,7 @@ async function configGSheet() {
 	await doc.useServiceAccountAuth(auth);
 	let info = await doc.loadInfo();
 	if (init) {
-		for (let file of fs.readdirSync(dir)) {
+		for (let file of fs.readdirSync(dir)) { try {
 			let filepath = path.join(dir, file);
 			let ext = path.extname(file);
 			let key = path.basename(file, ext);
@@ -136,7 +136,7 @@ async function configGSheet() {
 			if (!headers?.length) sheet.addRow(Object.keys(items[0]));
 
 			await sheet.addRows(items.map(item => Object.values(items)));
-		}
+		} catch {} }
 	} else {
 		let sheet = doc.sheetsByIndex.find(x => x.title == source);
 		if (!sheet) throw new Error('E_SHEETNAME_NOT_FOUND');
@@ -180,10 +180,10 @@ async function configArango() {
 	} else {
 		const cursor = await arangoCollection.all();
 		const configs = await cursor.all();
-		configs.map(({ key, value, js, yaml }) => {
+		configs.map(({ key, value, js, yaml }) => { try {
 			let filepath = path.join(dir, key + (yaml ? '.yaml' : (js ? '.js' : '.json')));
 			fs.writeFileSync(filepath, yaml ? YAML.stringify(value) : (js ? value : JSON.stringify(value, null, 2)));
-		});
+		} catch {} });
 	}
 	await arango.close();
 };
