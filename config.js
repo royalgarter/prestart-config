@@ -29,6 +29,7 @@ const exit = (c=0, ...m) => (m?.[0] && console.log(...m)) & process.exit(c);
 	try {
 		if (from.includes('mongo')) await configMongo();
 		if (from.match(/sheets?\//i)) await configGSheet();
+		if (from.includes('arango')) await configArango();
 	} catch (ex) {
 		console.error(ex)
 	} finally {
@@ -126,5 +127,42 @@ async function configGSheet() {
 
 		let filepath = path.join(dir, source + '.json');
 		fs.writeFileSync(filepath, JSON.stringify(objs, null, 2));
+	}
+}
+
+async function configArango() {
+	const { Database } = require('arangojs');
+	let url = new URL(ENV.ARANGO_URL);
+	const arango = new Database({
+		url: url.protocol + '//' + url.host,
+		databaseName: url.pathname.replace(/^\//, ''),
+		auth: { username: url.username, password: url.password },
+	});
+	const collection = arango.collection(source);
+	try { await collection.create(); } catch {}
+
+	if (init) {
+		for (let file of fs.readdirSync(dir)) {
+			let filepath = path.join(dir, file);
+			let ext = path.extname(file);
+			let key = path.basename(file, ext);
+			let js = (ext == '.js');
+			let yaml = (ext == '.yaml' || ext == '.yml');
+			let value = (js || yaml) ? fs.readFileSync(filepath, 'utf8') : require(filepath);
+
+			let existing = await collection.firstExample({ key });
+			if (existing) {
+				await collection.update(existing._key, { date: new Date(), key, value, js, yaml });
+			} else {
+				await collection.save({ date: new Date(), key, value, js, yaml });
+			}
+		}
+	} else {
+		const cursor = await arango.query(`FOR doc IN ${source} RETURN doc`);
+		const configs = await cursor.all();
+		configs.map(({key, value, js, yaml}) => {
+			let filepath = path.join(dir, key + (yaml ? '.yaml' : (js ? '.js' : '.json')));
+			fs.writeFileSync(filepath, yaml ? YAML.stringify(value) : (js ? value : JSON.stringify(value, null, 2)));
+		})
 	}
 }
