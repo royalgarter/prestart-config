@@ -37,7 +37,7 @@ function validateFrom(from) {
 }
 
 program
-	.requiredOption('-f, --from <from>', 'Config from: mongo/postgres/gsheet/arangodb/redis/github/gitlab/s3/url', from => validateFrom(from) || process.exit(1))
+	.requiredOption('-f, --from <from>', 'Config from: mongo/postgres/gsheet/arangodb/redis/github/gitlab/s3/url, or an env variable name (e.g. DATABASE_URL)')
 	.requiredOption('-s, --source <source>', 'Config source: mongo collection name/gsheet name/redis key/git repo/s3 path')
 	.option('-d, --dir <dir>', 'Output directory (required unless -e is given)')
 	.option('-e, --dotenv <dotenv>', 'Optional: Dotenv absolute filepath', __dirname + '/.env')
@@ -45,7 +45,7 @@ program
 	.option('-i, --init', 'Optional Mode: Initialize from file')
 	.parse(process.argv);
 
-const { from, source, dir, init, dotenv } = program.opts();
+const { from: rawFrom, source, dir, init, dotenv } = program.opts();
 // Env mode: only when -e is passed explicitly (it has a default value otherwise).
 const envMode = program.getOptionValueSource('dotenv') === 'cli';
 
@@ -55,6 +55,15 @@ if (!envMode && !dir) {
 }
 
 try { fs.existsSync(dotenv) && require('dotenv').config({path: dotenv}) && console.log(`> SUCCESS: Dotenv is loaded '${dotenv}'`) } catch (ex) {console.dir(ex.message || ex)}
+
+// -f may name an env variable (e.g. `-f DATABASE_URL`). It is resolved after the -e file is loaded.
+const isEnvName = /^[A-Z][A-Z0-9_]*$/.test(rawFrom);
+if (isEnvName && !ENV[rawFrom]) {
+	console.error(` > ERROR: Environment variable "${rawFrom}" is not set (export it or add it to the -e file)`);
+	process.exit(1);
+}
+const from = (isEnvName && ENV[rawFrom]) || rawFrom;
+validateFrom(from) || process.exit(1);
 
 dir && !fs.existsSync(dir) && fs.mkdirSync(dir, { recursive: true });
 

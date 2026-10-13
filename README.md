@@ -54,7 +54,7 @@ POSTGRES_URL="postgres://user:pass@localhost:5432/app" npx -y prestart-config -f
 
 | Option | Description |
 | --- | --- |
-| `-f, --from <from>` | Source: `mongo`, `postgres`, `arango`, a `mongodb://` or `postgres://` URL, or a Google Sheets URL. |
+| `-f, --from <from>` | Source: `mongo`, `postgres`, `arango`, a `mongodb://` or `postgres://` URL, a Google Sheets URL, or the name of an environment variable holding one of those URLs (e.g. `-f DATABASE_URL`). A variable name is read after the `-e` file is loaded. |
 | `-s, --source <source>` | MongoDB collection, PostgreSQL table, ArangoDB collection, or Google Sheet name. PostgreSQL names must be letters, digits and `_`. |
 | `-d, --dir <dir>` | Directory to read from (`-i`) or write to (load). Created if missing. Required, except in Env Mode (`-e`). |
 | `-i, --init` | Push the files in `-d` into the source. |
