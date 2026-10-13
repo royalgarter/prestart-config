@@ -15,6 +15,11 @@ let loading = setInterval(() => {
 	setTimeout(_ => process.stdout.write('\r> loading...\\'), 0.3e3);
 }, 0.4e3);
 
+// Hides the password in a connection URL: postgres://user:pass@host/db -> postgres://user:***@host/db
+function maskUrl(s) {
+	return String(s).replace(/(\/\/[^:\/@\s]+:)[^@\/\s]+@/, '$1***@');
+}
+
 function validateFrom(from) {
 	let flag = (
 		from == 'mongo' || from == 'arango' || from == 'postgres'
@@ -28,7 +33,7 @@ function validateFrom(from) {
 
 	console.error([
 		` > ERROR:`,
-		`Invalid source "${from}" specified.`,
+		`Invalid source "${maskUrl(from)}" specified.`,
 		`Valid sources must be 'arango', 'mongo', 'postgres', 'MongoDB URL', 'PostgreSQL URL' or 'Google Sheets URL'.`,
 		`Read more: https://github.com/royalgarter/prestart-config/blob/main/README.md`,
 	].join(' '));
@@ -37,21 +42,35 @@ function validateFrom(from) {
 }
 
 program
-	.requiredOption('-f, --from <from>', 'Config from: mongo/postgres/gsheet/arangodb/redis/github/gitlab/s3/url', from => validateFrom(from) || process.exit(1))
+	.requiredOption('-f, --from <from>', 'Config from: mongo/postgres/gsheet/arangodb/redis/github/gitlab/s3/url, or an env variable name (e.g. DATABASE_URL)')
 	.requiredOption('-s, --source <source>', 'Config source: mongo collection name/gsheet name/redis key/git repo/s3 path')
-	.requiredOption('-d, --dir <dir>', 'Output directory')
+	.option('-d, --dir <dir>', 'Output directory (required unless -e is given)')
 	.option('-e, --dotenv <dotenv>', 'Optional: Dotenv absolute filepath', __dirname + '/.env')
 	.option('-q, --query <query>', 'Optional: Config query')
 	.option('-i, --init', 'Optional Mode: Initialize from file')
 	.parse(process.argv);
 
-const { from, source, dir, init, dotenv } = program.opts();
+const { from: rawFrom, source, dir, init, dotenv } = program.opts();
 // Env mode: only when -e is passed explicitly (it has a default value otherwise).
 const envMode = program.getOptionValueSource('dotenv') === 'cli';
 
+if (!envMode && !dir) {
+	console.error(' > ERROR: -d, --dir is required unless -e is given');
+	process.exit(1);
+}
+
 try { fs.existsSync(dotenv) && require('dotenv').config({path: dotenv}) && console.log(`> SUCCESS: Dotenv is loaded '${dotenv}'`) } catch (ex) {console.dir(ex.message || ex)}
 
-!fs.existsSync(dir) && fs.mkdirSync(dir, { recursive: true });
+// -f may name an env variable (e.g. `-f DATABASE_URL`). It is resolved after the -e file is loaded.
+const isEnvName = /^[A-Z][A-Z0-9_]*$/.test(rawFrom);
+if (isEnvName && !ENV[rawFrom]) {
+	console.error(` > ERROR: Environment variable "${rawFrom}" is not set (export it or add it to the -e file)`);
+	process.exit(1);
+}
+const from = (isEnvName && ENV[rawFrom]) || rawFrom;
+validateFrom(from) || process.exit(1);
+
+dir && !fs.existsSync(dir) && fs.mkdirSync(dir, { recursive: true });
 
 const exit = (c=0, ...m) => (m?.[0] && console.log(...m)) & process.exit(c);
 
@@ -65,7 +84,7 @@ const exit = (c=0, ...m) => (m?.[0] && console.log(...m)) & process.exit(c);
 	} catch (ex) {
 		console.error(ex)
 	} finally {
-		console.log(`\n> SUCCESS: Configs are ${init ? 'initialzed' : 'loaded'} ${init ? 'to' : 'from'}: ` + from);
+		console.log(`\n> SUCCESS: Configs are ${init ? 'initialzed' : 'loaded'} ${init ? 'to' : 'from'}: ` + maskUrl(from));
 		clearInterval(loading);
 		exit(0);
 	}
@@ -161,7 +180,10 @@ function applyEnvRecords(text, records) {
 	const written = new Set();
 	const out = [];
 
-	for (const line of (text ? text.split(/\r?\n/) : [])) {
+	const lines = text ? text.split(/\r?\n/) : [];
+	if (lines.length && lines[lines.length - 1] === '') lines.pop(); // trailing newline, not a line
+
+	for (const line of lines) {
 		const m = line.match(/^\s*(?:export\s+)?([\w.-]+)\s*=/);
 		if (m && values.has(m[1])) {
 			if (!written.has(m[1])) out.push(`${m[1]}=${formatEnvValue(m[1], values.get(m[1]))}`);
@@ -193,17 +215,20 @@ async function envPush(store) {
 	}
 }
 
+// Pull: the database wins. Every variable that is missing or different locally is written,
+// regardless of the .env file's modification time (a single edit must not block the whole pull).
 async function envPull(store) {
-	const target = path.join(dir, '.env');
+	// Without -d, pull writes straight to the -e file.
+	const target = dir ? path.join(dir, '.env') : dotenv;
 	const exists = fs.existsSync(target);
 	const text = exists ? fs.readFileSync(target, 'utf8') : '';
 	const localVars = new Map(Object.entries(require('dotenv').parse(text)));
-	const mtime = exists ? Math.floor(fs.statSync(target).mtimeMs) : undefined;
 
-	const apply = (await store.fetch()).filter(r =>
-		localVars.get(r.key) !== r.value && shouldWrite(r.key, r.last_modified, mtime));
+	const apply = (await store.fetch()).filter(r => localVars.get(r.key) !== r.value);
 	if (!apply.length) return;
+	for (const r of apply) console.log(`> PULL: '${r.key}' updated from database`);
 
+	fs.mkdirSync(path.dirname(target), { recursive: true });
 	fs.writeFileSync(target, applyEnvRecords(text, apply));
 	const newest = new Date(Math.max(...apply.map(r => r.last_modified)));
 	fs.utimesSync(target, newest, newest);
