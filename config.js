@@ -215,17 +215,18 @@ async function envPush(store) {
 	}
 }
 
+// Pull: the database wins. Every variable that is missing or different locally is written,
+// regardless of the .env file's modification time (a single edit must not block the whole pull).
 async function envPull(store) {
 	// Without -d, pull writes straight to the -e file.
 	const target = dir ? path.join(dir, '.env') : dotenv;
 	const exists = fs.existsSync(target);
 	const text = exists ? fs.readFileSync(target, 'utf8') : '';
 	const localVars = new Map(Object.entries(require('dotenv').parse(text)));
-	const mtime = exists ? Math.floor(fs.statSync(target).mtimeMs) : undefined;
 
-	const apply = (await store.fetch()).filter(r =>
-		localVars.get(r.key) !== r.value && shouldWrite(r.key, r.last_modified, mtime));
+	const apply = (await store.fetch()).filter(r => localVars.get(r.key) !== r.value);
 	if (!apply.length) return;
+	for (const r of apply) console.log(`> PULL: '${r.key}' updated from database`);
 
 	fs.mkdirSync(path.dirname(target), { recursive: true });
 	fs.writeFileSync(target, applyEnvRecords(text, apply));

@@ -153,11 +153,13 @@ npx -y prestart-config -f postgres -s app_env -d ./envout -e ./app.env
 ```
 
 - Push writes only variables whose value differs from the database, and only if the file is newer than the stored record.
-- Pull writes `<dir>/.env`. It replaces only the variables that are newer in the database and keeps comments and unrelated lines.
+- Pull writes `<dir>/.env` (or the `-e` file without `-d`). It writes every variable that is missing or different in the database, regardless of the file's modification time, and keeps comments and unrelated lines. The database wins on pull.
 - Env mode works with MongoDB, ArangoDB and PostgreSQL only. It does not work with Google Sheets.
 
 > [!WARNING]
-> Conflicts are checked against the whole file's modification time, not per variable. If you edit one variable, every variable whose value differs from the database is pushed when the file is newer. A stale value in the file can therefore overwrite a newer database value for another variable. Pull first, then edit and push.
+> Pull overwrites local values that differ from the database, even if you edited the file more recently. Edits you have not pushed yet will be lost on pull, so run `-i` first to push them.
+>
+> Push is checked against the whole file's modification time, not per variable. If you edit one variable, every variable whose value differs from the database is pushed when the file is newer. A stale value in the file can therefore overwrite a newer database value for another variable. Pull first, then edit and push.
 
 ## Reference Documentation
 Detailed reference documentation for prestart-config can be found at [GitHub Pages](https://github.com/royalgarter/prestart-config).
