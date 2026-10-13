@@ -39,7 +39,7 @@ function validateFrom(from) {
 program
 	.requiredOption('-f, --from <from>', 'Config from: mongo/postgres/gsheet/arangodb/redis/github/gitlab/s3/url', from => validateFrom(from) || process.exit(1))
 	.requiredOption('-s, --source <source>', 'Config source: mongo collection name/gsheet name/redis key/git repo/s3 path')
-	.requiredOption('-d, --dir <dir>', 'Output directory')
+	.option('-d, --dir <dir>', 'Output directory (required unless -e is given)')
 	.option('-e, --dotenv <dotenv>', 'Optional: Dotenv absolute filepath', __dirname + '/.env')
 	.option('-q, --query <query>', 'Optional: Config query')
 	.option('-i, --init', 'Optional Mode: Initialize from file')
@@ -49,9 +49,14 @@ const { from, source, dir, init, dotenv } = program.opts();
 // Env mode: only when -e is passed explicitly (it has a default value otherwise).
 const envMode = program.getOptionValueSource('dotenv') === 'cli';
 
+if (!envMode && !dir) {
+	console.error(' > ERROR: -d, --dir is required unless -e is given');
+	process.exit(1);
+}
+
 try { fs.existsSync(dotenv) && require('dotenv').config({path: dotenv}) && console.log(`> SUCCESS: Dotenv is loaded '${dotenv}'`) } catch (ex) {console.dir(ex.message || ex)}
 
-!fs.existsSync(dir) && fs.mkdirSync(dir, { recursive: true });
+dir && !fs.existsSync(dir) && fs.mkdirSync(dir, { recursive: true });
 
 const exit = (c=0, ...m) => (m?.[0] && console.log(...m)) & process.exit(c);
 
@@ -161,7 +166,10 @@ function applyEnvRecords(text, records) {
 	const written = new Set();
 	const out = [];
 
-	for (const line of (text ? text.split(/\r?\n/) : [])) {
+	const lines = text ? text.split(/\r?\n/) : [];
+	if (lines.length && lines[lines.length - 1] === '') lines.pop(); // trailing newline, not a line
+
+	for (const line of lines) {
 		const m = line.match(/^\s*(?:export\s+)?([\w.-]+)\s*=/);
 		if (m && values.has(m[1])) {
 			if (!written.has(m[1])) out.push(`${m[1]}=${formatEnvValue(m[1], values.get(m[1]))}`);
@@ -194,7 +202,8 @@ async function envPush(store) {
 }
 
 async function envPull(store) {
-	const target = path.join(dir, '.env');
+	// Without -d, pull writes straight to the -e file.
+	const target = dir ? path.join(dir, '.env') : dotenv;
 	const exists = fs.existsSync(target);
 	const text = exists ? fs.readFileSync(target, 'utf8') : '';
 	const localVars = new Map(Object.entries(require('dotenv').parse(text)));
@@ -204,6 +213,7 @@ async function envPull(store) {
 		localVars.get(r.key) !== r.value && shouldWrite(r.key, r.last_modified, mtime));
 	if (!apply.length) return;
 
+	fs.mkdirSync(path.dirname(target), { recursive: true });
 	fs.writeFileSync(target, applyEnvRecords(text, apply));
 	const newest = new Date(Math.max(...apply.map(r => r.last_modified)));
 	fs.utimesSync(target, newest, newest);

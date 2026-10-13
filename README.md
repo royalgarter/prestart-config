@@ -56,7 +56,7 @@ POSTGRES_URL="postgres://user:pass@localhost:5432/app" npx -y prestart-config -f
 | --- | --- |
 | `-f, --from <from>` | Source: `mongo`, `postgres`, `arango`, a `mongodb://` or `postgres://` URL, or a Google Sheets URL. |
 | `-s, --source <source>` | MongoDB collection, PostgreSQL table, ArangoDB collection, or Google Sheet name. PostgreSQL names must be letters, digits and `_`. |
-| `-d, --dir <dir>` | Directory to read from (`-i`) or write to (load). Created if missing. |
+| `-d, --dir <dir>` | Directory to read from (`-i`) or write to (load). Created if missing. Required, except in Env Mode (`-e`). |
 | `-i, --init` | Push the files in `-d` into the source. |
 | `-e, --dotenv <path>` | Env file to read. Passing it explicitly turns on Env Mode. |
 | `-q, --query <query>` | Accepted but not used yet. |
@@ -142,11 +142,14 @@ LOG_LEVEL="debug mode"
 ```
 
 ```sh
-# Push app.env into table "app_env"
-npx -y prestart-config -f postgres -s app_env -d ./envout -e ./app.env -i
+# Push app.env into table "app_env" (-d is not needed)
+npx -y prestart-config -f postgres -s app_env -e ./app.env -i
 
 # Pull into ./envout/.env (keeps comments and other lines, changes only the variables that differ)
-npx -y prestart-config -f postgres -s app_env -d ./envout -e ./envout/.env
+npx -y prestart-config -f postgres -s app_env -e ./envout/.env
+
+# Or pull into a folder: writes ./envout/.env
+npx -y prestart-config -f postgres -s app_env -d ./envout -e ./app.env
 ```
 
 - Push writes only variables whose value differs from the database, and only if the file is newer than the stored record.
