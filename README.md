@@ -1,45 +1,160 @@
 # Prestart Config
 ## Introduction
-Prestart Config is a command-line utility used to load and configure settings from various sources such as MongoDB, Google Sheets, and more.
+Prestart Config is a command-line utility used to load and configure settings from various sources such as MongoDB, PostgreSQL, ArangoDB, Google Sheets, and more.
+
+- **Load (default):** copies the stored configs from the source into the `-d` directory.
+- **Init (`-i`):** pushes the files in the `-d` directory into the source.
 
 ## Environment Configuration
 > [!IMPORTANT]
-> Key information users need to know to achieve their goal.
-> Before using prestart-config, you need to configure some environment variables as follows:
-> In the directory there must be an [`.env`] file and the following variables must be configured 
+> The connection URLs are read from environment variables. The `-e` default is the `.env` file inside the package folder (not your project), so your project `.env` is not loaded automatically. Use one of the methods in [Using a `.env` file](#using-a-env-file).
 
-- `MONGO_URL`: Connection URL to MongoDB (if using MongoDB).
-- `GOOGLE_SERVICE_ACCOUNT_EMAIL`: Email of Google service account (if using Google Sheets).
-- `GOOGLE_PRIVATE_KEY`: Private key of Google service account (if using Google Sheets).
+| Variable | Used by | Description |
+| --- | --- | --- |
+| `MONGO_URL` | `-f mongo` | MongoDB connection URL. |
+| `ARANGO_URL` | `-f arango` | ArangoDB URL including user, password and database, e.g. `http://root:pass@localhost:8529/_system`. |
+| `POSTGRES_URL` | `-f postgres` | PostgreSQL connection URL. If unset, `pg` uses the standard `PG*` variables (`PGHOST`, `PGUSER`, ...). |
+| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Google Sheets | Email of the Google service account. |
+| `GOOGLE_PRIVATE_KEY` | Google Sheets | Private key of the Google service account. |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | Google Sheets | Optional: path to the service account JSON file instead of the two variables above. |
 
 > [!TIP]
-> For a smoother process.
-You can obtain the `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_PRIVATE_KEY` by following the instructions provided by Google [here](https://cloud.google.com/iam/docs/keys-list-get).
+> You can get `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_PRIVATE_KEY` by following the instructions from Google [here](https://cloud.google.com/iam/docs/keys-list-get).
+> The private key is long. Keep it in one line in `.env` with `\n` for line breaks, wrapped in double quotes.
 
-Note: For the `GOOGLE_PRIVATE_KEY` environment variable, you need to provide the private key as a string, but keep in mind that this string is often long and distributed. Make sure you copy this string accurately.
+### Using a `.env` file
+Example `.env` in your project:
 
-## Example Usage: 
+```sh
+MONGO_URL=mongodb://user:pass@localhost:27017/app
+ARANGO_URL=http://root:pass@localhost:8529/_system
+POSTGRES_URL=postgres://user:pass@localhost:5432/app
+GOOGLE_SERVICE_ACCOUNT_EMAIL=config-reader@my-project.iam.gserviceaccount.com
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----\n"
+```
+
+Load it in one of these ways:
+
+```sh
+# 1. Export the variables into the current shell (bash/zsh)
+set -a; . ./.env; set +a
+npx -y prestart-config -f postgres -s app_config -d ./configs
+
+# 2. Node.js 20.6+ reads the file directly (needs a local install: npm i prestart-config)
+node --env-file=.env node_modules/prestart-config/config.js -f mongo -s configs -d ./configs
+
+# 3. Pass the variables inline for a single run
+POSTGRES_URL="postgres://user:pass@localhost:5432/app" npx -y prestart-config -f postgres -s app_config -d ./configs
+```
+
 > [!NOTE]
-> Helpful advice for doing things better or more easily.
-   
-   * `-f, --from <from>`     Specifies the configuration source. Acceptable values are: ***mongo***, ***Mongo Url***, ***Google Sheet Url***.
-   * `-s, --source <source>`  Specifies the configuration source details. For MongoDB, this is the ***collection name***; for Google Sheets, this is the ***sheet name***
-   * `-d, --dir <dir>`        Specifies the output directory.
-   * `-q, --query <query>`    Specifies a configuration query.
-   * `-i, --init`             Initializes the configuration.
-   * `-h, --help`            Displays help for the command.
+> Do not pass your connection `.env` to `-e`. Passing `-e` turns on [Env Mode](#env-mode-env-file), which syncs every variable of that file into the database.
 
-  ### npx
-  ```sh
-  npx -y prestart-config -f <from> -s <source> -d <dir>
-  ```
-  1. **Load configuration from MongoDB:** <br>
-     * If use config mongo .env<br>
-        * Example: `npx -y prestart-config -f mongo -s <collection name> -d <out directory>`<br>
-     * If use Mongo URL Connection <br>
-        * Example: `npx -y prestart-config -f <mongodb+srv:// ...> -s <collection name> -d <out directory>`
-  2. **Load configuration from GoogleSheet:**<br>
-        * Example: `npx -y prestart-config -f <Google Sheets URL> -s <sheet name> -d <output directory>`
+## Options
+
+| Option | Description |
+| --- | --- |
+| `-f, --from <from>` | Source: `mongo`, `postgres`, `arango`, a `mongodb://` or `postgres://` URL, or a Google Sheets URL. |
+| `-s, --source <source>` | MongoDB collection, PostgreSQL table, ArangoDB collection, or Google Sheet name. PostgreSQL names must be letters, digits and `_`. |
+| `-d, --dir <dir>` | Directory to read from (`-i`) or write to (load). Created if missing. |
+| `-i, --init` | Push the files in `-d` into the source. |
+| `-e, --dotenv <path>` | Env file to read. Passing it explicitly turns on Env Mode. |
+| `-q, --query <query>` | Accepted but not used yet. |
+| `-h, --help` | Show help. |
+
+File names become keys: `app.json` is stored as key `app`. Files ending in `.js` are stored as text with `js: true`; `.yaml` and `.yml` are stored as text with `yaml: true`.
+
+## Examples
+
+### MongoDB
+```sh
+# Load collection "configs" into ./configs (MONGO_URL from the environment)
+npx -y prestart-config -f mongo -s configs -d ./configs
+
+# Use a connection URL directly
+npx -y prestart-config -f "mongodb+srv://user:pass@cluster.example.net/app" -s configs -d ./configs
+
+# Push ./configs into the collection
+npx -y prestart-config -f mongo -s configs -d ./configs -i
+```
+
+### PostgreSQL
+The table is created automatically if it does not exist.
+
+```sh
+# Load table "app_config" (POSTGRES_URL from the environment)
+npx -y prestart-config -f postgres -s app_config -d ./configs
+
+# Use a connection URL directly
+npx -y prestart-config -f "postgres://user:pass@localhost:5432/app" -s app_config -d ./configs
+
+# Push ./configs into the table
+npx -y prestart-config -f postgres -s app_config -d ./configs -i
+```
+
+### ArangoDB
+The collection must already exist.
+
+```sh
+# Load collection "configs" (ARANGO_URL from the environment)
+npx -y prestart-config -f arango -s configs -d ./configs
+
+# Push ./configs into the collection
+npx -y prestart-config -f arango -s configs -d ./configs -i
+```
+
+### Google Sheets
+Each sheet is one config. Set the service account variables first.
+
+```sh
+# Load sheet "Settings" from a spreadsheet URL into ./configs/Settings.json
+npx -y prestart-config -f "https://docs.google.com/spreadsheets/d/<SHEET_ID>/edit" -s Settings -d ./configs
+```
+
+### Expected output
+```sh
+$ npx -y prestart-config -f postgres -s app_config -d ./configs
+> SUCCESS: Configs are loaded from: postgres
+
+$ npx -y prestart-config -f postgres -s app_config -d ./configs -i
+> SUCCESS: Configs are initialzed to: postgres
+
+# When the stored copy is newer than the local file, the push skips it:
+> SKIP: 'app' kept existing copy, it was modified later
+```
+
+## Conflict Handling (last modified wins)
+Every stored config keeps a `last_modified` timestamp (the local file's modification time when it was pushed).
+- `-i, --init` (push): a local file overwrites the stored config only if the file was modified **later** than the stored copy.
+- Load (pull): a stored config overwrites the local file only if it was modified **later** than the local file. Pulled files get the stored timestamp as their modification time, so they are not pushed back unnecessarily.
+
+Applies to MongoDB, ArangoDB and PostgreSQL. `-i` does not truncate the collection or table, so records that are newer than the local files are kept.
+
+Timestamps come from clocks on different machines, so keep them in sync (NTP). A fresh `git clone` sets every file's mtime to the checkout time, which makes those files look newer than the database.
+
+## Env Mode (`.env` file)
+Pass `-e` explicitly to sync a `.env` file instead of the files in `-d`. Each variable is stored as one record (`key` = variable name). Use a dedicated file and a dedicated collection or table, because the values are stored in plain text.
+
+```sh
+# app.env
+APP_NAME=demo
+LOG_LEVEL="debug mode"
+```
+
+```sh
+# Push app.env into table "app_env"
+npx -y prestart-config -f postgres -s app_env -d ./envout -e ./app.env -i
+
+# Pull into ./envout/.env (keeps comments and other lines, changes only the variables that differ)
+npx -y prestart-config -f postgres -s app_env -d ./envout -e ./envout/.env
+```
+
+- Push writes only variables whose value differs from the database, and only if the file is newer than the stored record.
+- Pull writes `<dir>/.env`. It replaces only the variables that are newer in the database and keeps comments and unrelated lines.
+- Env mode works with MongoDB, ArangoDB and PostgreSQL only. It does not work with Google Sheets.
+
+> [!WARNING]
+> Conflicts are checked against the whole file's modification time, not per variable. If you edit one variable, every variable whose value differs from the database is pushed when the file is newer. A stale value in the file can therefore overwrite a newer database value for another variable. Pull first, then edit and push.
 
 ## Reference Documentation
 Detailed reference documentation for prestart-config can be found at [GitHub Pages](https://github.com/royalgarter/prestart-config).
