@@ -15,6 +15,11 @@ let loading = setInterval(() => {
 	setTimeout(_ => process.stdout.write('\r> loading...\\'), 0.3e3);
 }, 0.4e3);
 
+// Hides the password in a connection URL: postgres://user:pass@host/db -> postgres://user:***@host/db
+function maskUrl(s) {
+	return String(s).replace(/(\/\/[^:\/@\s]+:)[^@\/\s]+@/, '$1***@');
+}
+
 function validateFrom(from) {
 	let flag = (
 		from == 'mongo' || from == 'arango' || from == 'postgres'
@@ -28,7 +33,7 @@ function validateFrom(from) {
 
 	console.error([
 		` > ERROR:`,
-		`Invalid source "${from}" specified.`,
+		`Invalid source "${maskUrl(from)}" specified.`,
 		`Valid sources must be 'arango', 'mongo', 'postgres', 'MongoDB URL', 'PostgreSQL URL' or 'Google Sheets URL'.`,
 		`Read more: https://github.com/royalgarter/prestart-config/blob/main/README.md`,
 	].join(' '));
@@ -79,7 +84,7 @@ const exit = (c=0, ...m) => (m?.[0] && console.log(...m)) & process.exit(c);
 	} catch (ex) {
 		console.error(ex)
 	} finally {
-		console.log(`\n> SUCCESS: Configs are ${init ? 'initialzed' : 'loaded'} ${init ? 'to' : 'from'}: ` + from);
+		console.log(`\n> SUCCESS: Configs are ${init ? 'initialzed' : 'loaded'} ${init ? 'to' : 'from'}: ` + maskUrl(from));
 		clearInterval(loading);
 		exit(0);
 	}
