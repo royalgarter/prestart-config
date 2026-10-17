@@ -15,9 +15,31 @@ let loading = setInterval(() => {
 	setTimeout(_ => process.stdout.write('\r> loading...\\'), 0.3e3);
 }, 0.4e3);
 
-// Hides the password in a connection URL: postgres://user:pass@host/db -> postgres://user:***@host/db
+// Hides credentials in a connection URL: postgres://user:pass@host/db -> postgres://***:***@host/db
 function maskUrl(s) {
-	return String(s).replace(/(\/\/[^:\/@\s]+:)[^@\/\s]+@/, '$1***@');
+	return String(s).replace(/\/\/[^\/@\s]+@/g, '//***:***@');
+}
+
+function maskArg(arg) {
+	if (arg == null || typeof arg === 'boolean' || typeof arg === 'number') return arg;
+	if (typeof arg === 'string') return maskUrl(arg);
+	if (arg instanceof Error) {
+		const e = new Error(maskUrl(arg.message));
+		e.name = arg.name;
+		if (arg.stack) e.stack = maskUrl(arg.stack);
+		return e;
+	}
+	if (typeof arg === 'object') {
+		try { return JSON.parse(maskUrl(JSON.stringify(arg))); }
+		catch { return maskUrl(String(arg)); }
+	}
+	return arg;
+}
+
+// Every console output obfuscates connection-string credentials.
+for (const method of ['log', 'error', 'warn', 'info', 'dir', 'debug']) {
+	const orig = console[method].bind(console);
+	console[method] = (...args) => orig(...args.map(maskArg));
 }
 
 function validateFrom(from) {
