@@ -70,14 +70,21 @@ program
 	.option('-e, --dotenv <dotenv>', 'Optional: Dotenv absolute filepath', __dirname + '/.env')
 	.option('-q, --query <query>', 'Optional: Config query')
 	.option('-i, --init', 'Optional Mode: Initialize from file')
+	.option('-k, --keys <keys>', 'Optional: comma-separated variable names; with -e, only these keys are pushed or pulled')
 	.parse(process.argv);
 
-const { from: rawFrom, source, dir, init, dotenv } = program.opts();
+const { from: rawFrom, source, dir, init, dotenv, keys: rawKeys } = program.opts();
+const keys = rawKeys ? new Set(rawKeys.split(',').map(k => k.trim()).filter(Boolean)) : null;
 // Env mode: only when -e is passed explicitly (it has a default value otherwise).
 const envMode = program.getOptionValueSource('dotenv') === 'cli';
 
 if (!envMode && !dir) {
 	console.error(' > ERROR: -d, --dir is required unless -e is given');
+	process.exit(1);
+}
+
+if (rawKeys && (!envMode || !keys.size)) {
+	console.error(' > ERROR: -k, --keys needs -e and at least one key');
 	process.exit(1);
 }
 
@@ -226,6 +233,10 @@ async function envPush(store) {
 	if (!fs.existsSync(dotenv)) throw new Error('E_ENV_FILE_NOT_FOUND');
 
 	const vars = require('dotenv').parse(fs.readFileSync(dotenv));
+	if (keys) {
+		for (const key of keys) if (!(key in vars)) console.log(`> SKIP: '${key}' is not in ${dotenv}`);
+		for (const key of Object.keys(vars)) if (!keys.has(key)) delete vars[key];
+	}
 	const mtime = Math.floor(fs.statSync(dotenv).mtimeMs);
 	const remote = new Map((await store.fetch()).map(r => [r.key, r]));
 
@@ -246,7 +257,7 @@ async function envPull(store) {
 	const text = exists ? fs.readFileSync(target, 'utf8') : '';
 	const localVars = new Map(Object.entries(require('dotenv').parse(text)));
 
-	const apply = (await store.fetch()).filter(r => localVars.get(r.key) !== r.value);
+	const apply = (await store.fetch()).filter(r => (!keys || keys.has(r.key)) && localVars.get(r.key) !== r.value);
 	if (!apply.length) return;
 	for (const r of apply) console.log(`> PULL: '${r.key}' updated from database`);
 
