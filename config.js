@@ -15,9 +15,31 @@ let loading = setInterval(() => {
 	setTimeout(_ => process.stdout.write('\r> loading...\\'), 0.3e3);
 }, 0.4e3);
 
-// Hides the password in a connection URL: postgres://user:pass@host/db -> postgres://user:***@host/db
+// Hides credentials in a connection URL: postgres://user:pass@host/db -> postgres://***:***@host/db
 function maskUrl(s) {
-	return String(s).replace(/(\/\/[^:\/@\s]+:)[^@\/\s]+@/, '$1***@');
+	return String(s).replace(/\/\/[^\/@\s]+@/g, '//***:***@');
+}
+
+function maskArg(arg) {
+	if (arg == null || typeof arg === 'boolean' || typeof arg === 'number') return arg;
+	if (typeof arg === 'string') return maskUrl(arg);
+	if (arg instanceof Error) {
+		const e = new Error(maskUrl(arg.message));
+		e.name = arg.name;
+		if (arg.stack) e.stack = maskUrl(arg.stack);
+		return e;
+	}
+	if (typeof arg === 'object') {
+		try { return JSON.parse(maskUrl(JSON.stringify(arg))); }
+		catch { return maskUrl(String(arg)); }
+	}
+	return arg;
+}
+
+// Every console output obfuscates connection-string credentials.
+for (const method of ['log', 'error', 'warn', 'info', 'dir', 'debug']) {
+	const orig = console[method].bind(console);
+	console[method] = (...args) => orig(...args.map(maskArg));
 }
 
 function validateFrom(from) {
@@ -48,14 +70,24 @@ program
 	.option('-e, --dotenv <dotenv>', 'Optional: Dotenv absolute filepath', __dirname + '/.env')
 	.option('-q, --query <query>', 'Optional: Config query')
 	.option('-i, --init', 'Optional Mode: Initialize from file')
+	.option('-k, --keys <keys>', 'Optional: comma-separated variable names; with -e, only these keys are pushed or pulled')
+	.option('-y, --yes', 'Optional: with -e -i, approve every conflict without prompting')
+	.option('--show-values', 'Optional: print full values in conflict prompts (masked by default)')
 	.parse(process.argv);
 
-const { from: rawFrom, source, dir, init, dotenv } = program.opts();
+const { from: rawFrom, source, dir, init, dotenv, keys: rawKeys, yes, showValues } = program.opts();
+let exitCode = 0;
+const keys = rawKeys ? new Set(rawKeys.split(',').map(k => k.trim()).filter(Boolean)) : null;
 // Env mode: only when -e is passed explicitly (it has a default value otherwise).
 const envMode = program.getOptionValueSource('dotenv') === 'cli';
 
 if (!envMode && !dir) {
 	console.error(' > ERROR: -d, --dir is required unless -e is given');
+	process.exit(1);
+}
+
+if (rawKeys && (!envMode || !keys.size)) {
+	console.error(' > ERROR: -k, --keys needs -e and at least one key');
 	process.exit(1);
 }
 
@@ -86,7 +118,7 @@ const exit = (c=0, ...m) => (m?.[0] && console.log(...m)) & process.exit(c);
 	} finally {
 		console.log(`\n> SUCCESS: Configs are ${init ? 'initialzed' : 'loaded'} ${init ? 'to' : 'from'}: ` + maskUrl(from));
 		clearInterval(loading);
-		exit(0);
+		exit(exitCode);
 	}
 })();
 
@@ -204,14 +236,61 @@ async function envPush(store) {
 	if (!fs.existsSync(dotenv)) throw new Error('E_ENV_FILE_NOT_FOUND');
 
 	const vars = require('dotenv').parse(fs.readFileSync(dotenv));
+	if (keys) {
+		for (const key of keys) if (!(key in vars)) console.log(`> SKIP: '${key}' is not in ${dotenv}`);
+		for (const key of Object.keys(vars)) if (!keys.has(key)) delete vars[key];
+	}
 	const mtime = Math.floor(fs.statSync(dotenv).mtimeMs);
 	const remote = new Map((await store.fetch()).map(r => [r.key, r]));
 
-	for (const [key, value] of Object.entries(vars)) {
-		const existing = remote.get(key);
-		if (existing?.value === value) continue;
-		if (!shouldWrite(key, mtime, existing?.last_modified)) continue;
-		await store.upsert({ key, value, js: false, yaml: false, last_modified: mtime });
+	// Every conflict (different value, or no/empty value in the database) needs the user's approval.
+	// Approval overrides the last-modified guard, so the stored timestamp is bumped above the existing one.
+	const conflicts = Object.entries(vars).filter(([key, value]) => remote.get(key)?.value !== value);
+	if (!conflicts.length) return;
+
+	clearInterval(loading); // stop the spinner so it does not garble the prompts
+	await new Promise(r => setTimeout(r, 0.5e3));
+	process.stdout.write('\r' + ' '.repeat(30) + '\r');
+
+	if (!yes && !process.stdin.isTTY) {
+		console.error(`> ERROR: ${conflicts.length} conflict(s) need approval but stdin is not a terminal. Nothing pushed. Run interactively or pass --yes.`);
+		exitCode = 1;
+		return;
+	}
+
+	const rl = yes ? null : require('readline').createInterface({ input: process.stdin, output: process.stdout });
+	const closed = rl && new Promise(r => rl.once('close', () => r(null)));
+	const ask = q => Promise.race([new Promise(r => rl.question(q, r)), closed]);
+	// Values are masked unless --show-values: "ab***yz (len 32)"
+	const show = v => {
+		if (v == null) return '(none)';
+		if (v === '') return '(empty)';
+		if (showValues) return JSON.stringify(v);
+		const s = typeof v == 'string' ? v : JSON.stringify(v);
+		return (s.length > 8 ? s.slice(0, 2) + '***' + s.slice(-2) : '***') + ` (len ${s.length})`;
+	};
+
+	try {
+		for (const [key, value] of conflicts) {
+			const existing = remote.get(key);
+			const state = !existing ? 'missing in database' : (existing.value == null || existing.value === '') ? 'empty in database' : 'differs from database';
+			console.log(`\n> CONFLICT: '${key}' ${state}`);
+			console.log(`  database: ${show(existing?.value)}`);
+			console.log(`  .env    : ${show(value)}`);
+
+			if (yes) console.log('  --yes: approved');
+			else {
+				const answer = await ask('  Overwrite database with the .env value? [y/N] ');
+				if (answer == null) { console.log('\n> ABORT: no more input, remaining conflicts skipped'); exitCode = 1; break; }
+				if (!/^y(es)?$/i.test(answer.trim())) { console.log(`> SKIP: '${key}' not pushed`); continue; }
+			}
+
+			const last_modified = Math.max(mtime, (existing?.last_modified || 0) + 1);
+			await store.upsert({ key, value, js: false, yaml: false, last_modified });
+			console.log(`> PUSH: '${key}' written to database`);
+		}
+	} finally {
+		rl?.close();
 	}
 }
 
@@ -224,7 +303,7 @@ async function envPull(store) {
 	const text = exists ? fs.readFileSync(target, 'utf8') : '';
 	const localVars = new Map(Object.entries(require('dotenv').parse(text)));
 
-	const apply = (await store.fetch()).filter(r => localVars.get(r.key) !== r.value);
+	const apply = (await store.fetch()).filter(r => (!keys || keys.has(r.key)) && localVars.get(r.key) !== r.value);
 	if (!apply.length) return;
 	for (const r of apply) console.log(`> PULL: '${r.key}' updated from database`);
 

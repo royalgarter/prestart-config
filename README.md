@@ -59,6 +59,7 @@ POSTGRES_URL="postgres://user:pass@localhost:5432/app" npx -y prestart-config -f
 | `-d, --dir <dir>` | Directory to read from (`-i`) or write to (load). Created if missing. Required, except in Env Mode (`-e`). |
 | `-i, --init` | Push the files in `-d` into the source. |
 | `-e, --dotenv <path>` | Env file to read. Passing it explicitly turns on Env Mode. |
+| `-k, --keys <keys>` | Comma-separated variable names. Needs `-e`. Only these keys are pushed (`-i`) or pulled; all other keys in the file and the database are left untouched. A key missing from the file prints `SKIP`. |
 | `-q, --query <query>` | Accepted but not used yet. |
 | `-h, --help` | Show help. |
 
@@ -152,8 +153,9 @@ npx -y prestart-config -f postgres -s app_env -e ./envout/.env
 npx -y prestart-config -f postgres -s app_env -d ./envout -e ./app.env
 ```
 
-- Push writes only variables whose value differs from the database, and only if the file is newer than the stored record.
+- Push (`-i`) is interactive: for every variable that differs from the database, or is missing or empty there, it shows both values and asks `[y/N]` before overwriting. Only `y` writes; anything else (or end of input) skips. Approval overrides the last-modified guard. Identical values are not asked. Values are masked in the prompt (`ab***yz (len 32)`); add `--show-values` to print them in full. `-y, --yes` approves every conflict without prompting. Without `--yes`, a non-interactive run (no TTY) pushes nothing and exits with code 1.
 - Pull writes `<dir>/.env` (or the `-e` file without `-d`). It writes every variable that is missing or different in the database, regardless of the file's modification time, and keeps comments and unrelated lines. The database wins on pull.
+- `-k key01,key02` limits push and pull to those variables, e.g. `npx -y prestart-config -f postgres -s app_env -e ./app.env -i -k key01,key02`. The last-modified guard still applies.
 - Env mode works with MongoDB, ArangoDB and PostgreSQL only. It does not work with Google Sheets.
 
 > [!WARNING]
