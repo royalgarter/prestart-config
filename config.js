@@ -71,9 +71,12 @@ program
 	.option('-q, --query <query>', 'Optional: Config query')
 	.option('-i, --init', 'Optional Mode: Initialize from file')
 	.option('-k, --keys <keys>', 'Optional: comma-separated variable names; with -e, only these keys are pushed or pulled')
+	.option('-y, --yes', 'Optional: with -e -i, approve every conflict without prompting')
+	.option('--show-values', 'Optional: print full values in conflict prompts (masked by default)')
 	.parse(process.argv);
 
-const { from: rawFrom, source, dir, init, dotenv, keys: rawKeys } = program.opts();
+const { from: rawFrom, source, dir, init, dotenv, keys: rawKeys, yes, showValues } = program.opts();
+let exitCode = 0;
 const keys = rawKeys ? new Set(rawKeys.split(',').map(k => k.trim()).filter(Boolean)) : null;
 // Env mode: only when -e is passed explicitly (it has a default value otherwise).
 const envMode = program.getOptionValueSource('dotenv') === 'cli';
@@ -115,7 +118,7 @@ const exit = (c=0, ...m) => (m?.[0] && console.log(...m)) & process.exit(c);
 	} finally {
 		console.log(`\n> SUCCESS: Configs are ${init ? 'initialzed' : 'loaded'} ${init ? 'to' : 'from'}: ` + maskUrl(from));
 		clearInterval(loading);
-		exit(0);
+		exit(exitCode);
 	}
 })();
 
@@ -240,11 +243,54 @@ async function envPush(store) {
 	const mtime = Math.floor(fs.statSync(dotenv).mtimeMs);
 	const remote = new Map((await store.fetch()).map(r => [r.key, r]));
 
-	for (const [key, value] of Object.entries(vars)) {
-		const existing = remote.get(key);
-		if (existing?.value === value) continue;
-		if (!shouldWrite(key, mtime, existing?.last_modified)) continue;
-		await store.upsert({ key, value, js: false, yaml: false, last_modified: mtime });
+	// Every conflict (different value, or no/empty value in the database) needs the user's approval.
+	// Approval overrides the last-modified guard, so the stored timestamp is bumped above the existing one.
+	const conflicts = Object.entries(vars).filter(([key, value]) => remote.get(key)?.value !== value);
+	if (!conflicts.length) return;
+
+	clearInterval(loading); // stop the spinner so it does not garble the prompts
+	await new Promise(r => setTimeout(r, 0.5e3));
+	process.stdout.write('\r' + ' '.repeat(30) + '\r');
+
+	if (!yes && !process.stdin.isTTY) {
+		console.error(`> ERROR: ${conflicts.length} conflict(s) need approval but stdin is not a terminal. Nothing pushed. Run interactively or pass --yes.`);
+		exitCode = 1;
+		return;
+	}
+
+	const rl = yes ? null : require('readline').createInterface({ input: process.stdin, output: process.stdout });
+	const closed = rl && new Promise(r => rl.once('close', () => r(null)));
+	const ask = q => Promise.race([new Promise(r => rl.question(q, r)), closed]);
+	// Values are masked unless --show-values: "ab***yz (len 32)"
+	const show = v => {
+		if (v == null) return '(none)';
+		if (v === '') return '(empty)';
+		if (showValues) return JSON.stringify(v);
+		const s = typeof v == 'string' ? v : JSON.stringify(v);
+		return (s.length > 8 ? s.slice(0, 2) + '***' + s.slice(-2) : '***') + ` (len ${s.length})`;
+	};
+
+	try {
+		for (const [key, value] of conflicts) {
+			const existing = remote.get(key);
+			const state = !existing ? 'missing in database' : (existing.value == null || existing.value === '') ? 'empty in database' : 'differs from database';
+			console.log(`\n> CONFLICT: '${key}' ${state}`);
+			console.log(`  database: ${show(existing?.value)}`);
+			console.log(`  .env    : ${show(value)}`);
+
+			if (yes) console.log('  --yes: approved');
+			else {
+				const answer = await ask('  Overwrite database with the .env value? [y/N] ');
+				if (answer == null) { console.log('\n> ABORT: no more input, remaining conflicts skipped'); exitCode = 1; break; }
+				if (!/^y(es)?$/i.test(answer.trim())) { console.log(`> SKIP: '${key}' not pushed`); continue; }
+			}
+
+			const last_modified = Math.max(mtime, (existing?.last_modified || 0) + 1);
+			await store.upsert({ key, value, js: false, yaml: false, last_modified });
+			console.log(`> PUSH: '${key}' written to database`);
+		}
+	} finally {
+		rl?.close();
 	}
 }
 
